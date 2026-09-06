@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        # Main WordPress container — your image with real site content baked in
+        - name: wordpress
+          image: us-central1-docker.pkg.dev/bespokescenting-devops/wp-repo/wordpress:v1
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              # 127.0.0.1 because the Cloud SQL Proxy runs as a sidecar
+              # in the same pod and listens locally
+              value: "127.0.0.1"
+            - name: WORDPRESS_DB_NAME
+              value: "wordpress"
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wp-db-secret
+                  key: username
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wp-db-secret
+                  key: password
+
+        # Cloud SQL Auth Proxy — securely tunnels to your Cloud SQL instance
+        # without exposing it publicly
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          args:
+            - "--structured-logs"
+            - "--credentials-file=/secrets/cloudsql/key.json"
+            - "bespokescenting-devops:us-central1:wp-db-instance"
+          securityContext:
+            runAsNonRoot: true
+          volumeMounts:
+            - name: cloudsql-sa-volume
+              mountPath: /secrets/cloudsql
+              readOnly: true
+
+      volumes:
+        - name: cloudsql-sa-volume
+          secret:
+            secretName: cloudsql-sa-key

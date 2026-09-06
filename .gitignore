@@ -1,0 +1,14 @@
+# Secrets ? never commit these
+key.json
+*.json.key
+
+# Large backup files ? not needed in version control, GitHub blocks files over 100MB anyway
+*.wpress
+real-site-export.sql
+
+# WordPress runtime files that shouldn't be tracked
+wp-content/uploads/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db

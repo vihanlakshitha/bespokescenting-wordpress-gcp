@@ -1,0 +1,57 @@
+name: Deploy WordPress to GKE
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write   # required for Workload Identity Federation — no stored keys needed
+
+env:
+  PROJECT_ID: bespokescenting-devops
+  REGION: us-central1
+  REPO: wp-repo
+  IMAGE_NAME: wordpress
+  CLUSTER_NAME: wp-cluster
+  CLUSTER_REGION: us-central1
+  DEPLOYMENT_NAME: wordpress
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/515010992298/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-deployer@bespokescenting-devops.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}
+          location: ${{ env.CLUSTER_REGION }}
+
+      - name: Deploy to GKE
+        run: |
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} wordpress=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }}
